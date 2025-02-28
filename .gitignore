@@ -1,0 +1,34 @@
+# Environment variables
+.env
+
+# Virtual environments
+/venv
+.venv
+
+# Python cache files
+**/__pycache__/
+**/*.py[cod]
+
+# IDE settings
+.vscode/
+
+# Jupyter Notebook files
+test.ipynb
+token.json
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+
+structured_data.xlsx
+*.pyc
+__pycache__/
+
+test_single_emails.py
+clasem.py
+claseN.py
+
+.idea
+.aws-sam
