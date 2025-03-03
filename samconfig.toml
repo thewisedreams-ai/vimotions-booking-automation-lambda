@@ -8,3 +8,13 @@ confirm_changeset = false
 capabilities = "CAPABILITY_IAM"
 image_repositories = []
 parameter_overrides = "Environment=test"
+[default.deploy.parameters]
+stack_name = "booking-automation-test-app"
+resolve_s3 = true
+s3_prefix = "booking-automation-test-app"
+region = "eu-west-1"
+profile = "DataScientistAdmin-343218191120"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Environment=\"test\""
+image_repositories = []
