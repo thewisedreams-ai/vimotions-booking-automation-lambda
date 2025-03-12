@@ -13,8 +13,9 @@ stack_name = "booking-automation-test-app"
 resolve_s3 = true
 s3_prefix = "booking-automation-test-app"
 region = "eu-west-1"
-profile = "DataScientistAdmin-343218191120"
+profile = "TWD"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
 parameter_overrides = "Environment=\"test\""
 image_repositories = []
+disable_rollback = true
