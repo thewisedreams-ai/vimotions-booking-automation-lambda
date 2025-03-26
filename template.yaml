@@ -140,6 +140,21 @@ Resources:
       QueueName: !Sub "email-to-be-processed-dlq-${Environment}"
       MessageRetentionPeriod: 1209600
 
+  ResourceLocksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ResourceLocks
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: resource_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: resource_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expiration_time
+        Enabled: true
+
 
   EmailTriageFunction:
     Type: AWS::Serverless::Function
@@ -156,6 +171,8 @@ Resources:
             QueueName: !GetAtt EmailTriageQueue.QueueName
         - SQSSendMessagePolicy:
             QueueName: !GetAtt EmailToBeProcessedQueue.QueueName
+        - DynamoDBCrudPolicy:  # Añade el permiso para la tabla DynamoDB
+            TableName: ResourceLocks
         - Statement: # Permisos de S3 (lectura, escritura, borrado)
             - Effect: Allow
               Action:
