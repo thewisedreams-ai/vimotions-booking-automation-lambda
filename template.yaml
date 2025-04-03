@@ -166,6 +166,7 @@ Resources:
       Environment:
         Variables:
           SQS_URL: !Sub "https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/email-to-be-processed-queue-${Environment}"
+          DYNAMO_EMAIL_TABLE: "agents-test-booking-agent-email-booking"
       Policies:
         - SQSPollerPolicy:
             QueueName: !GetAtt EmailTriageQueue.QueueName
@@ -184,6 +185,14 @@ Resources:
               Action:
                 - s3:ListBucket
               Resource: !Sub "arn:aws:s3:::booking-automation-email-${Environment}-bucket"
+
+            - Effect: Allow
+              Action:
+                - dynamodb:Scan
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/agents-test-booking-agent-email-booking"
+
       Events:
         SQSTrigger:
           Type: SQS
