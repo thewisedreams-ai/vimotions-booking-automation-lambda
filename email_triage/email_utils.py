@@ -4,13 +4,11 @@ from email.utils import getaddresses
 import logging
 import os
 import re
-import time
-import uuid
+
+
 import boto3
 from botocore.exceptions import ClientError
-import json
-from io import BytesIO
-import pandas as pd
+
 
 # Configuración de logging
 logger = logging.getLogger()
@@ -21,143 +19,6 @@ sqs = boto3.client("sqs")
 s3 = boto3.client("s3")
 # Cargar lista de emails válidos desde Excel
 environment = os.environ.get("Environment", "test")
-
-# Inicializar el recurso de DynamoDB (ajusta la región según corresponda)
-dynamodb = boto3.resource("dynamodb", region_name="eu-west-1")
-
-# Obtener el nombre de la tabla desde una variable de entorno o usar el valor por defecto
-email_table_name = os.getenv(
-    "DYNAMO_EMAIL_TABLE", "agents-test-booking-agent-email-booking"
-)
-email_table = dynamodb.Table(email_table_name)
-# Cargar la lista de emails de reservas desde un archivo Excel en S3
-EMAIL_VAL = set()  # Inicializar el conjunto vacío
-
-try:
-    # Realiza el scan de la tabla
-    response = email_table.scan()
-    items = response.get("Items", [])
-    # Si se requiere paginación:
-    while "LastEvaluatedKey" in response:
-        response = email_table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
-        items.extend(response.get("Items", []))
-
-    # Extrae la key "email" de cada ítem
-    EMAIL_VAL = set(item["email"] for item in items if "email" in item)
-    logger.info(f"Lista de emails cargados desde DynamoDB: {EMAIL_VAL}")
-except Exception as e:
-    logger.error(f"Error al cargar emails desde DynamoDB: {e}")
-
-# def send_queue_message(queue_url, msg_attributes, msg_body, message_group_id="default"):
-#     """
-#     Sends a message to the specified queue.
-#     """
-#     try:
-#         response = sqs.send_message(
-#             QueueUrl=queue_url,
-#             MessageAttributes=msg_attributes,
-#             MessageBody=msg_body,
-#             # MessageGroupId=message_group_id,
-#             # MessageDeduplicationId=deduplication_id,
-#         )
-#     except ClientError:
-#         logger.exception(f"Could not send meessage to the - {queue_url}.")
-#         raise
-#     else:
-#         return response
-
-
-# def acquire_lock(resource_id, owner_id, ttl_seconds=60):
-#     """Adquiere un bloqueo para el recurso especificado"""
-#     dynamodb = boto3.resource("dynamodb")
-#     table = dynamodb.Table("ResourceLocks")
-
-#     try:
-#         # Intenta crear un registro de bloqueo con condición de que no exista
-#         response = table.put_item(
-#             Item={
-#                 "resource_id": resource_id,
-#                 "owner_id": owner_id,
-#                 "expiration_time": int(time.time()) + ttl_seconds,
-#             },
-#             ConditionExpression="attribute_not_exists(resource_id) OR expiration_time < :now",
-#             ExpressionAttributeValues={":now": int(time.time())},
-#         )
-#         logger.info(f"Bloqueo adquirido para {resource_id} por {owner_id}")
-#         return True
-#     except ClientError as e:
-#         if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-#             logger.warning(
-#                 f"No se pudo adquirir el bloqueo para {resource_id}, ya está bloqueado"
-#             )
-#             return False
-#         raise
-
-
-# def release_lock(resource_id, owner_id):
-#     """Libera un bloqueo si es el propietario"""
-#     dynamodb = boto3.resource("dynamodb")
-#     table = dynamodb.Table("ResourceLocks")
-
-#     try:
-#         response = table.delete_item(
-#             Key={"resource_id": resource_id},
-#             ConditionExpression="owner_id = :owner_id",
-#             ExpressionAttributeValues={":owner_id": owner_id},
-#         )
-#         logger.info(f"Bloqueo liberado para {resource_id} por {owner_id}")
-#         return True
-#     except ClientError as e:
-#         if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-#             logger.warning(
-#                 f"No se pudo liberar el bloqueo para {resource_id}, no eres el propietario"
-#             )
-#             return False
-#         raise
-
-
-# def read_excel_s3(bucket, key):
-#     """Lee un archivo Excel desde S3 con parámetros para evitar caché"""
-#     s3 = boto3.client("s3")
-#     timestamp = int(time.time())  # Para evitar caché
-
-#     # Añadir parámetros para evitar caché
-#     obj = s3.get_object(
-#         Bucket=bucket, Key=key, ResponseCacheControl="no-cache,no-store,must-revalidate"
-#     )
-#     return pd.read_excel(BytesIO(obj["Body"].read()))
-
-
-# def read_excel_s3_with_lock(bucket, key, max_retries=5, retry_delay=2):
-#     """Lee un archivo Excel de S3 con bloqueo"""
-#     execution_id = str(uuid.uuid4())
-#     resource_id = f"{bucket}/{key}"
-
-#     for attempt in range(max_retries):
-#         if acquire_lock(resource_id, execution_id, ttl_seconds=30):
-#             try:
-#                 try:
-#                     df = read_excel_s3(bucket, key)
-#                     logger.info(f"Archivo leído correctamente: {bucket}/{key}")
-#                     return df
-#                 except ClientError as e:
-#                     if e.response["Error"]["Code"] == "NoSuchKey":
-#                         logger.warning(
-#                             f"El archivo {key} no existe en el bucket {bucket}"
-#                         )
-#                         return pd.DataFrame()  # Devuelve DataFrame vacío si no existe
-#                     raise
-#             finally:
-#                 release_lock(resource_id, execution_id)
-
-#         logger.warning(
-#             f"Intento {attempt + 1}/{max_retries} fallido para obtener bloqueo de lectura para {key}"
-#         )
-#         time.sleep(retry_delay)
-
-#     raise Exception(
-#         f"No se pudo adquirir el bloqueo para leer {resource_id} después de {max_retries} intentos"
-#     )
 
 
 def extract_email_headers(msg):
@@ -240,7 +101,7 @@ def read_email_in_s3(bucket_name, s3_key):
         return None
 
 
-def should_email_be_processed(email_content):
+def should_email_be_processed(email_content, valid_emails):
     """
     Extrae el remitente del email buscando el header "From:" en el contenido y
     verifica si se encuentra en la lista de emails de reservas.
@@ -248,7 +109,7 @@ def should_email_be_processed(email_content):
     match = re.search(r"^From:.*<([^>]+)>", email_content, re.IGNORECASE | re.MULTILINE)
     if match:
         sender = match.group(1).strip()
-        if sender in EMAIL_VAL:
+        if sender in valid_emails:
             logger.info(f"El email {sender} está en la lista de emails de reservas")
             return True
         else:
