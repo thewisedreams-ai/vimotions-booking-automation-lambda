@@ -8,8 +8,6 @@ from email_utils import (
     move_email_to_no_relevante,
 )
 
-# import time
-# from datetime import datetime, timedelta
 import boto3
 
 # Configuración de logging
