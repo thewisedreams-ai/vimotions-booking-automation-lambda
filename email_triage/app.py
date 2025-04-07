@@ -22,7 +22,7 @@ dynamodb = boto3.resource("dynamodb", region_name="eu-west-1")
 
 # Obtener el nombre de la tabla desde una variable de entorno o usar el valor por defecto
 email_table_name = os.getenv(
-    "DYNAMO_EMAIL_TABLE", "agents-test-booking-agent-email-booking"
+    "DYNAMO_EMAIL_TABLE", "tripilot-test-booking-agent-email-booking"
 )
 email_table = dynamodb.Table(email_table_name)
 EMAIL_VAL = set()
