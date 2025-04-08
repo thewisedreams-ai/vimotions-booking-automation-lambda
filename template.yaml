@@ -1,0 +1,189 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SQS with DLQ and Lambda event source
+Parameters:
+  Environment:
+    Type: String
+    Default: test
+    AllowedValues:
+      - test
+      - prod
+    Description: "Specify the environment (test or prod)"
+
+Mappings:
+  EnvironmentMap:
+    test:
+      email: "test-vimotions-insular@tripilots.com"
+    prod:
+      email: "vimotions-insular@tripilots.com"
+Resources:
+  EmailBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "booking-automation-email-${Environment}"
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  EmailBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref EmailBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ses.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "arn:aws:s3:::${EmailBucket}/*"
+            Condition:
+              StringEquals:
+                aws:Referer: !Ref AWS::AccountId
+
+  EmailReceiptRule:
+    Type: AWS::SES::ReceiptRule
+    DependsOn:
+      - EmailBucketPolicy
+    Properties:
+      RuleSetName: "default-rule-set"
+      Rule:
+        Name: !Sub "SaveToS3AndNotify-vimotions-${Environment}"
+        Enabled: true
+        Recipients:
+          - !FindInMap [EnvironmentMap, !Ref Environment, email]
+        Actions:
+          - S3Action:
+              BucketName: !Ref EmailBucket
+              ObjectKeyPrefix: "emails/"
+              TopicArn: !Ref ProcessEmailTopic
+        ScanEnabled: false
+
+  ProcessEmailTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: "Topic to be notified when a new email arrives"
+
+  ProcessEmailTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref ProcessEmailTopic
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ses.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref ProcessEmailTopic
+
+  ProcessEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref ProcessEmailTopic
+      Protocol: sqs
+      Endpoint: !GetAtt EmailTriageQueue.Arn
+      RawMessageDelivery: true
+
+  EmailTriageQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "email-triage-queue-${Environment}"
+      VisibilityTimeout: 30
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EmailTriageDlq.Arn
+        maxReceiveCount: 1
+
+  EmailToBeProcessedQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "email-to-be-processed-queue-${Environment}"
+      VisibilityTimeout: 30
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt EmailToBeProcessedDlq.Arn
+        maxReceiveCount: 1
+
+  EmailTriageQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref EmailTriageQueue
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: "sns.amazonaws.com"
+            Action: "sqs:SendMessage"
+            Resource: !GetAtt EmailTriageQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref ProcessEmailTopic
+
+  EmailTriageDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "email-triage-dlq-${Environment}"
+      MessageRetentionPeriod: 1209600
+
+  EmailToBeProcessedDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "email-to-be-processed-dlq-${Environment}"
+      MessageRetentionPeriod: 1209600
+
+  EmailTriageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: email_triage/
+      Handler: app.lambda_handler
+      Runtime: python3.12
+      FunctionName: !Sub "email-triage-function-${Environment}"
+      Environment:
+        Variables:
+          SQS_URL: !Sub "https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/email-to-be-processed-queue-${Environment}"
+          DYNAMO_EMAIL_TABLE: !Sub "tripilot-${Environment}-booking-agent-email-booking"
+      Policies:
+        - SQSPollerPolicy:
+            QueueName: !GetAtt EmailTriageQueue.QueueName
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt EmailToBeProcessedQueue.QueueName
+        - Statement: # Permisos de S3 (lectura, escritura, borrado)
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+                - s3:DeleteObject
+              Resource: !Sub "arn:aws:s3:::${EmailBucket}/*"
+            - Effect: Allow
+              Action:
+                - s3:ListBucket
+              Resource: !Sub "arn:aws:s3:::${EmailBucket}/*"
+
+            - Effect: Allow
+              Action:
+                - dynamodb:Scan
+                - dynamodb:GetItem
+                - dynamodb:Query
+              Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/tripilot-${Environment}-booking-agent-email-booking"
+
+      Events:
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt EmailTriageQueue.Arn
+            BatchSize: 1
+
+
+Outputs:
+  EmailTriageQueueUrl:
+    Description: "EmailTriageQueue URL"
+    Value: !Ref EmailTriageQueue
+  EmailToBeProcessedUrl:
+    Description: "EmailToBeProcessedQueue ARN"
+    Value: !GetAtt EmailToBeProcessedQueue.Arn

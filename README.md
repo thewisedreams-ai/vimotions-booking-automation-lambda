@@ -31,10 +31,16 @@ The Lambda function is triggered by messages from SQS.
      sam build
      ```
 
-   - **Deploy the SAM Application**:
+   - **Deploy the SAM Application - TEST**:
 
      ```bash
      sam deploy --config-env test
+     ```
+   
+   - **Deploy the SAM Application - PROD**:
+
+     ```bash
+     sam deploy --config-env prod
      ```
 
 5. **Verify Email Reception**
