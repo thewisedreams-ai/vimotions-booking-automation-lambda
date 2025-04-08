@@ -8,14 +8,13 @@ confirm_changeset = false
 capabilities = "CAPABILITY_IAM"
 image_repositories = []
 parameter_overrides = "Environment=test"
-[default.deploy.parameters]
-stack_name = "booking-automation-test-app"
+
+[prod.deploy.parameters]
+stack_name = "booking-automation-prod-app"
 resolve_s3 = true
-s3_prefix = "booking-automation-test-app"
+s3_prefix = "booking-automation-prod-app"
 region = "eu-west-1"
-profile = "TWD"
 confirm_changeset = true
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "Environment=\"test\""
 image_repositories = []
-disable_rollback = true
+parameter_overrides = "Environment=prod"

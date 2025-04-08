@@ -13,14 +13,14 @@ Parameters:
 Mappings:
   EnvironmentMap:
     test:
-      email: "vimotions_insular@ai.test.tripilots.com"
+      email: "test-vimotions-insular@tripilots.com"
     prod:
       email: "vimotions-insular@tripilots.com"
 Resources:
   EmailBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "booking-automation-email-${Environment}-bucket"
+      BucketName: !Sub "booking-automation-email-${Environment}"
       VersioningConfiguration:
         Status: Enabled
       PublicAccessBlockConfiguration:
@@ -45,17 +45,14 @@ Resources:
               StringEquals:
                 aws:Referer: !Ref AWS::AccountId
 
-  EmailReceiptRuleSet:
-    Type: AWS::SES::ReceiptRuleSet
-    Properties:
-      RuleSetName: "default-rule-set"
-
   EmailReceiptRule:
     Type: AWS::SES::ReceiptRule
+    DependsOn:
+      - EmailBucketPolicy
     Properties:
-      RuleSetName: !Ref EmailReceiptRuleSet
+      RuleSetName: "default-rule-set"
       Rule:
-        Name: "SaveToS3AndNotify"
+        Name: !Sub "SaveToS3AndNotify-vimotions-${Environment}"
         Enabled: true
         Recipients:
           - !FindInMap [EnvironmentMap, !Ref Environment, email]
@@ -140,22 +137,6 @@ Resources:
       QueueName: !Sub "email-to-be-processed-dlq-${Environment}"
       MessageRetentionPeriod: 1209600
 
-  # ResourceLocksTable:
-  #   Type: AWS::DynamoDB::Table
-  #   Properties:
-  #     TableName: ResourceLocks
-  #     BillingMode: PAY_PER_REQUEST
-  #     AttributeDefinitions:
-  #       - AttributeName: resource_id
-  #         AttributeType: S
-  #     KeySchema:
-  #       - AttributeName: resource_id
-  #         KeyType: HASH
-  #     TimeToLiveSpecification:
-  #       AttributeName: expiration_time
-  #       Enabled: true
-
-
   EmailTriageFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -166,32 +147,30 @@ Resources:
       Environment:
         Variables:
           SQS_URL: !Sub "https://sqs.${AWS::Region}.amazonaws.com/${AWS::AccountId}/email-to-be-processed-queue-${Environment}"
-          DYNAMO_EMAIL_TABLE: "agents-test-booking-agent-email-booking"
+          DYNAMO_EMAIL_TABLE: !Sub "tripilot-${Environment}-booking-agent-email-booking"
       Policies:
         - SQSPollerPolicy:
             QueueName: !GetAtt EmailTriageQueue.QueueName
         - SQSSendMessagePolicy:
             QueueName: !GetAtt EmailToBeProcessedQueue.QueueName
-        # - DynamoDBCrudPolicy:  # Añade el permiso para la tabla DynamoDB
-        #     TableName: ResourceLocks
         - Statement: # Permisos de S3 (lectura, escritura, borrado)
             - Effect: Allow
               Action:
                 - s3:GetObject
                 - s3:PutObject
                 - s3:DeleteObject
-              Resource: !Sub "arn:aws:s3:::booking-automation-email-${Environment}-bucket/*"
+              Resource: !Sub "arn:aws:s3:::${EmailBucket}/*"
             - Effect: Allow
               Action:
                 - s3:ListBucket
-              Resource: !Sub "arn:aws:s3:::booking-automation-email-${Environment}-bucket"
+              Resource: !Sub "arn:aws:s3:::${EmailBucket}/*"
 
             - Effect: Allow
               Action:
                 - dynamodb:Scan
                 - dynamodb:GetItem
                 - dynamodb:Query
-              Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/agents-test-booking-agent-email-booking"
+              Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/tripilot-${Environment}-booking-agent-email-booking"
 
       Events:
         SQSTrigger:
