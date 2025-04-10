@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from datetime import datetime
 from email_utils import (
     read_email_in_s3,
     should_email_be_processed,
@@ -82,13 +83,16 @@ def lambda_handler(event, context):
         # Seleccionar el cuerpo: se prefiere el texto plano; si no existe, se usa el HTML.
         email_body = body["plain"] if body["plain"] else body["html"]
 
+        fecha_reserva = datetime.today().strftime("%d-%m-%Y")
         # Crear el email combinado con el formato solicitado.
         combined_email = (
             f"From: {from_emails}\n"
             f"To: {to_emails}\n"
             f"Subject: {subject}\n"
-            f"Body: {email_body}"
+            f"Body: {email_body}\n"
+            f"fecha_reserva: {fecha_reserva}"
         )
+
 
         logger.info("----- Email Combinado -----")
         logger.info(combined_email)
